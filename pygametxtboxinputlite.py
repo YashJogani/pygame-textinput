@@ -1,7 +1,7 @@
 """
 Copyright 2021, J4ck7511, All Rights Reserved.
 
-Borrowed from https://github.com/Jack7511/pygame-text-input-box under the MIT License.
+Borrowed from https://github.com/Jack7511/pygame-textbox-input under the MIT License.
 
 Some part of code is Borrowed from https://github.com/Nearoo/pygame-text-input under the MIT license.
 """
