@@ -120,18 +120,19 @@ class TextInputBox:
                         )
 
                     elif event.key == pl.K_RETURN:
-                        if self.max_width == -1:
+                        if self.max_width == -1 or self.password:
                             return True
                         self.input_string = self.input_string[:self.cursor_position] + '\n' + self.input_string[self.cursor_position:]
                         self.cursor_position += 1
                     
                     elif event.key == pl.K_TAB:
-                        self.input_string = (
-                            self.input_string[:self.cursor_position]
-                            + "    "
-                            + self.input_string[self.cursor_position:]
-                        )
-                        self.cursor_position += 4
+                        if self.max_string_length == -1 or len(self.input_string) + 4 < self.max_string_length:
+                            self.input_string = (
+                                self.input_string[:self.cursor_position]
+                                + "    "
+                                + self.input_string[self.cursor_position:]
+                            )
+                            self.cursor_position += 4
                     
                     elif event.key == pl.K_RIGHT:
                         # Add one to cursor_pos, but do not exceed len(input_string)
@@ -142,6 +143,7 @@ class TextInputBox:
                         self.cursor_position = max(self.cursor_position - 1, 0)
 
                     elif event.key == pl.K_HOME:
+                        # Go to start of line
                         if len(self.input_string) and self.max_width > 0:
                             self.cursor_position -= len(self.wrapped_lines[self.cursor_y_pos][:self.cursor_x_pos])
                             self.cursor_x_pos = 0
@@ -150,6 +152,7 @@ class TextInputBox:
                         break
 
                     elif event.key == pl.K_END:
+                        # Go to end of line
                         if len(self.input_string) and self.max_width > 0:
                             self.cursor_position += len(self.wrapped_lines[self.cursor_y_pos][self.cursor_x_pos:])
                             self.cursor_x_pos = len(self.wrapped_lines[self.cursor_y_pos])
@@ -315,7 +318,7 @@ class TextInputBox:
 
 
     def wrap_word(self, word):
-        wrapped_lines = []
+        wrapped_word = []
 
         while len(word):
             ## Store as many characters as possible to fit in allowed width
@@ -332,9 +335,9 @@ class TextInputBox:
             
             ## Join all characters that fit in width into one line
             final_line = ''.join(line_of_char)
-            wrapped_lines.append(final_line)
+            wrapped_word.append(final_line)
         
-        return wrapped_lines
+        return wrapped_word
     
     def render_surface(self):
         if not len(self.input_string):
@@ -422,7 +425,7 @@ if __name__ == "__main__":
                 exit()
             
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_RSHIFT:
+                if event.key == pygame.K_RCTRL:
                     if textinput.align_text == "left":
                         textinput.align_text = "center"
                     else:
