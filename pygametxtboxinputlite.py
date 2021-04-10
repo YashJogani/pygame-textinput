@@ -126,7 +126,7 @@ class TextInputBox:
                         self.cursor_position += 1
                     
                     elif event.key == pl.K_TAB:
-                        if self.max_string_length == -1 or len(self.input_string) + 4 < self.max_string_length:
+                        if self.max_string_length == -1 or len(self.input_string) + 4 <= self.max_string_length:
                             self.input_string = (
                                 self.input_string[:self.cursor_position]
                                 + "    "
