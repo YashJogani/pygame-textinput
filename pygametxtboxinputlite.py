@@ -1,7 +1,7 @@
 """
 Copyright 2021, J4ck7511, All Rights Reserved.
 
-Borrowed from https://github.com/Jack7511/pygame-textbox-input under the MIT License.
+Borrowed from https://github.com/Jack7511/pygame-text-input-box under the MIT License.
 
 Some part of code is Borrowed from https://github.com/Nearoo/pygame-text-input under the MIT license.
 """
@@ -14,7 +14,7 @@ import pygame.locals as pl
 pygame.font.init()
 
 
-class TextInputBoxLite:
+class TextInputBox:
     """
     This Class lets you write text at the blinking cursor.
     And text wraps into the next line if it exceeds the max_width passed.
@@ -31,7 +31,6 @@ class TextInputBoxLite:
             initial_string="",
             font_family="",
             font_size=35,
-            wrap_by_word=True,
             align_text="left",
             max_width=-1,
             antialias=True,
@@ -48,9 +47,8 @@ class TextInputBoxLite:
         :param initial_string: Initial text to be displayed
         :param font_family: name or list of names for font (see pygame.font.match_font for precise format)
         :param font_size:  Size of font in pixels
-        :param wrap_by_word: It wraps the string by words if True otherwise it wraps it by each character.
         :param align_text: It aligns all lines by "left" or "center"
-        :param max_width: Wraps the text if it exceeds the max_width, -1 for no wrapping
+        :param max_width: Maximum width before it starts wrapping string into the next line, -1 for no wrapping
         :param antialias: Determines if antialias is applied to font (uses more processing power)
         :param text_color: Color of text (duh)
         :param cursor_color: Color of cursor
@@ -66,7 +64,6 @@ class TextInputBoxLite:
         self.antialias = antialias
         self.text_color = text_color
         self.font_size = font_size
-        self.wrap_by_word = wrap_by_word
         self.align_text = align_text
         self.max_width = max_width
         self.max_string_length = max_string_length
@@ -78,10 +75,6 @@ class TextInputBoxLite:
             font_family = pygame.font.match_font(font_family)
 
         self.font_object = pygame.font.Font(font_family, font_size)
-
-        # Text-surface will be created during the first update call:
-        self.surface = pygame.Surface((1, 1))
-        self.surface.set_alpha(0)
 
         # Vars to make keydowns repeat after user pressed a key for some time:
         self.keyrepeat_counters = {}  # {event.key: (counter_int, event.unicode)} (look for "***")
@@ -119,7 +112,7 @@ class TextInputBoxLite:
 
                         # Subtract one from cursor_pos, but do not go below zero:
                         self.cursor_position = max(self.cursor_position - 1, 0)
-                    
+
                     elif event.key == pl.K_DELETE:
                         self.input_string = (
                             self.input_string[:self.cursor_position]
@@ -132,35 +125,6 @@ class TextInputBoxLite:
                         self.input_string = self.input_string[:self.cursor_position] + '\n' + self.input_string[self.cursor_position:]
                         self.cursor_position += 1
                     
-                    elif event.key == pl.K_RIGHT:
-                        # Add one to cursor_pos, but do not exceed len(input_string)
-                        self.cursor_position = min(self.cursor_position + 1, len(self.input_string))
-
-                    elif event.key == pl.K_LEFT:
-                        # Subtract one from cursor_pos, but do not go below zero:
-                        self.cursor_position = max(self.cursor_position - 1, 0)
-
-                    elif event.key == pl.K_END:
-                        if self.max_width > 0:
-                            self.cursor_position += len(self.wrapped_lines[self.cursor_y_pos][self.cursor_x_pos:])
-                        else:
-                            self.cursor_position = len(self.input_string)
-
-                    elif event.key == pl.K_HOME:
-                        if self.max_width > 0:
-                            if self.wrap_by_word:
-                                self.cursor_position -= len(self.wrapped_lines[self.cursor_y_pos][:self.cursor_x_pos])
-                            else:
-                                ## Home takes you to the first character of the line
-                                ## instead of zero character if wrap is by character
-                                ## but it will go to 0 if its in the first line
-                                if self.cursor_y_pos:
-                                    self.cursor_position -= len(self.wrapped_lines[self.cursor_y_pos][1:self.cursor_x_pos])
-                                else:
-                                    self.cursor_position -= len(self.wrapped_lines[self.cursor_y_pos][:self.cursor_x_pos])
-                        else:
-                            self.cursor_position = 0
-                    
                     elif event.key == pl.K_TAB:
                         self.input_string = (
                             self.input_string[:self.cursor_position]
@@ -169,42 +133,57 @@ class TextInputBoxLite:
                         )
                         self.cursor_position += 4
                     
+                    elif event.key == pl.K_RIGHT:
+                        # Add one to cursor_pos, but do not exceed len(input_string)
+                        self.cursor_position = min(self.cursor_position + 1, len(self.input_string))
+                    
+                    elif event.key == pl.K_LEFT:
+                        # Subtract one from cursor_pos, but do not go below zero:
+                        self.cursor_position = max(self.cursor_position - 1, 0)
+
+                    elif event.key == pl.K_HOME:
+                        if len(self.input_string) and self.max_width > 0:
+                            self.cursor_position -= len(self.wrapped_lines[self.cursor_y_pos][:self.cursor_x_pos])
+                            self.cursor_x_pos = 0
+                        else:
+                            self.cursor_position = 0
+                        break
+
+                    elif event.key == pl.K_END:
+                        if len(self.input_string) and self.max_width > 0:
+                            self.cursor_position += len(self.wrapped_lines[self.cursor_y_pos][self.cursor_x_pos:])
+                            self.cursor_x_pos = len(self.wrapped_lines[self.cursor_y_pos])
+                        else:
+                            self.cursor_position = len(self.input_string)
+                        break
+                    
                     elif event.key == pl.K_UP:
                         # Subtract one from cursor_y_pos, but do not go below zero
                         if self.cursor_y_pos:
                             self.cursor_y_pos -= 1
                             self.cursor_position -= self.cursor_x_pos
 
-                            ## Checking if there is '\n' at the end of upper line
-                            if self.wrap_by_word:
-                                if self.input_string[self.cursor_position - 1] == '\n' or self.input_string[self.cursor_position - 1] == ' ':
-                                    self.cursor_position -= 1
-                            else:
-                                if self.input_string[self.cursor_position - 1] == '\n':
-                                    self.cursor_position -= 1
+                            ## Checking if there is '\n' or space at the end of upper line
+                            if self.input_string[self.cursor_position - 1] == '\n' or self.input_string[self.cursor_position - 1] == ' ':
+                                self.cursor_position -= 1
                             
-                            self.cursor_position -= len(
-                                self.wrapped_lines[self.cursor_y_pos][self.cursor_x_pos:]
-                            )
+                            self.cursor_x_pos = len(self.wrapped_lines[self.cursor_y_pos][:self.cursor_x_pos])
+                            self.cursor_position -= len(self.wrapped_lines[self.cursor_y_pos][self.cursor_x_pos:])
+                        break
                     
                     elif event.key == pl.K_DOWN:
                         # Add one to cursor_y_pos, but do not exceed len(wrapped_lines) - 1
                         if self.cursor_y_pos < len(self.wrapped_lines) - 1:
-                            self.cursor_y_pos = min(self.cursor_y_pos + 1, len(self.wrapped_lines) - 1)
+                            self.cursor_y_pos += 1
+                            self.cursor_position += len(self.wrapped_lines[self.cursor_y_pos - 1][self.cursor_x_pos:])
 
-                            self.cursor_position += len(
-                                self.wrapped_lines[self.cursor_y_pos - 1][self.cursor_x_pos:]
-                            )
-
-                            ## Checking if there is '\n' at the end of current line
-                            if self.wrap_by_word:
-                                if self.input_string[self.cursor_position] == '\n' or self.input_string[self.cursor_position] == ' ':
-                                    self.cursor_position += 1
-                            else:
-                                if self.input_string[self.cursor_position] == '\n' or self.cursor_x_pos == 0:
-                                    self.cursor_position += 1
+                            ## Checking if there is '\n' or space at the end of current line
+                            if self.input_string[self.cursor_position] == '\n' or self.input_string[self.cursor_position] == ' ':
+                                self.cursor_position += 1
                             
-                            self.cursor_position += len(self.wrapped_lines[self.cursor_y_pos][:self.cursor_x_pos])
+                            self.cursor_x_pos = len(self.wrapped_lines[self.cursor_y_pos][:self.cursor_x_pos])
+                            self.cursor_position += self.cursor_x_pos
+                        break
                     
                     elif len(self.input_string) < self.max_string_length or self.max_string_length == -1:
                         # If no special key is pressed, add unicode of key to input_string
@@ -218,7 +197,6 @@ class TextInputBoxLite:
                     # Wraps the text and store lines in self.wrapped_lines
                     string = self.input_string
                     if self.password:
-                        self.wrap_by_word = False
                         string = "*" * len(self.input_string)
                     
                     self.wrap_text(string)
@@ -266,86 +244,97 @@ class TextInputBoxLite:
             self.wrapped_lines = []
             return None
         
+        ## Wrapped lines store each line as string
+        ## It removes the '\n' or ' ' at the end of line
+        ## As it serves no purpose in rendering
         self.wrapped_lines = []
         
         cursor_x_temp = 0
         cursor_y_temp = 0
 
-        if self.wrap_by_word:
-            ## Splits the string by words and line
-            text = [line.split(' ') for line in string.splitlines()]
-            
-            for line in text:
-                ## Store as many words as possible to fit in allowed width
-                while len(line):
-                    line_of_word = []
-                    while len(line):
-                        line_of_word.append(line.pop(0))
-                        fw, fh = self.font_object.size(' '.join(line_of_word + line[:1]))
-                        
-                        ## If width exceeds then store remaining words in new line
-                        if fw > self.max_width:
-                            break
-                    
-                    ## Join all words that fit in width into one line
-                    final_line = ' '.join(line_of_word)
-                    self.wrapped_lines.append(final_line)
-            
-            if self.input_string[-1] == '\n':
-                self.wrapped_lines.append('')
-            
-            ## Calculates the cursor x and y position
-            for line in self.wrapped_lines:
-                if (cursor_x_temp + len(line) + 1) <= self.cursor_position:
-                    cursor_x_temp += len(line) + 1
-                    cursor_y_temp += 1
-                    continue
-
-                self.cursor_x_pos = self.cursor_position - cursor_x_temp
-                self.cursor_y_pos = cursor_y_temp
-                break
+        ## Splits the string by words and line
+        text = [line.split(' ') for line in string.splitlines()]
         
-        else:
-            ## We can directly work on the string
-            while len(string):
-                ## Store as many characters as possible to fit in allowed width
-                line_of_char = []
-                while len(string):
-                    if string[0] == '\n':
-                        string = string[1:]
-                        line_of_char.append('')
-                        break
+        for line in text:
+            ## Store as many words as possible to fit in allowed width
+            while len(line):
+                line_of_word = []
+                while len(line):
+                    ## If word even fit in allowed width
+                    ## Otherwise wrap that word
+                    fw, fh = self.font_object.size(line[0])
+                    if fw > self.max_width:
+                        wrapped_word = self.wrap_word(line.pop(0))
 
-                    line_of_char.append(string[:1])
-                    string = string[1:]
-                    fw, fh = self.font_object.size(''.join(line_of_char + [string[:1]]))
+                        for i in range(len(wrapped_word) - 1):
+                            self.wrapped_lines.append(wrapped_word[i])
+                        
+                        if not len(line):
+                            line = [wrapped_word[-1]]
+                        else:
+                            line.insert(0, wrapped_word[-1])
+                        
+                        line_of_word = []
+                        continue
 
-                    ## If width exceeds then store remaining characters in new line
+                    line_of_word.append(line.pop(0))
+                    fw, fh = self.font_object.size(' '.join(line_of_word + line[:1]))
+                    
+                    ## If width exceeds then store remaining words in new line
                     if fw > self.max_width:
                         break
                 
-                ## Join all characters that fit in width into one line
-                final_line = ''.join(line_of_char)
+                ## Join all words that fit in width into one line
+                final_line = ' '.join(line_of_word)
                 self.wrapped_lines.append(final_line)
+        
+        if self.input_string[-1] == '\n':
+            self.wrapped_lines.append('')
+        
+        ## Calculates the cursor x and y position
+        for line in self.wrapped_lines:
+            if (cursor_x_temp + len(line) + 1) <= self.cursor_position:
 
-            if self.input_string[-1] == '\n':
-                self.wrapped_lines.append('')
-            
-            ## Calculates the cursor x and y positions
-            for line in self.wrapped_lines:
-                if (cursor_x_temp + len(line) + 1) <= self.cursor_position:
-
-                    if self.input_string[cursor_x_temp + len(line)] == '\n':
-                        cursor_x_temp += len(line) + 1
-                    else:
-                        cursor_x_temp += len(line)
-                    
-                    cursor_y_temp += 1
-                    continue
+                if self.input_string[cursor_x_temp + len(line)] == '\n' or self.input_string[cursor_x_temp + len(line)] == ' ':
+                    cursor_x_temp += len(line) + 1
+                else:
+                    cursor_x_temp += len(line)
                 
-                self.cursor_x_pos = self.cursor_position - cursor_x_temp
-                self.cursor_y_pos = cursor_y_temp
-                break
+                cursor_y_temp += 1
+                continue
+            
+            self.cursor_x_pos = self.cursor_position - cursor_x_temp
+            self.cursor_y_pos = cursor_y_temp
+            break
+
+        if len(self.wrapped_lines) > self.cursor_y_pos + 1 and not self.password:
+            if self.cursor_x_pos == len(self.wrapped_lines[self.cursor_y_pos]):
+                if self.input_string[self.cursor_position] != '\n' and self.input_string[self.cursor_position] != ' ':
+                    self.cursor_x_pos = 0
+                    self.cursor_y_pos += 1
+
+
+    def wrap_word(self, word):
+        wrapped_lines = []
+
+        while len(word):
+            ## Store as many characters as possible to fit in allowed width
+            line_of_char = []
+            while len(word):
+
+                line_of_char.append(word[:1])
+                word = word[1:]
+                fw, fh = self.font_object.size(''.join(line_of_char + [word[:1]]))
+
+                ## If width exceeds then store remaining characters in new line
+                if fw > self.max_width:
+                    break
+            
+            ## Join all characters that fit in width into one line
+            final_line = ''.join(line_of_char)
+            wrapped_lines.append(final_line)
+        
+        return wrapped_lines
     
     def render_surface(self):
         if not len(self.input_string):
@@ -370,7 +359,7 @@ class TextInputBoxLite:
             fw, fh = self.font_object.size(line)
 
             if self.align_text == "left":
-                x = self.x
+                x = self.x + 0
             else:
                 x = self.x + self.max_width/2 - fw/2
             
@@ -399,7 +388,6 @@ class TextInputBoxLite:
 
         string = self.input_string
         if self.password:
-            self.wrap_by_word = False
             string = "*" * len(self.input_string)
         
         self.wrap_text(string)
@@ -422,8 +410,8 @@ if __name__ == "__main__":
     WIN = pygame.display.set_mode((700, 500))
     clock = pygame.time.Clock()
 
-    ## Create TextInput-object
-    textinput = TextInputBoxLite(WIN, 25, 10, font_family='Consolas', font_size=25, max_width=650)
+    # Create TextInput-object
+    textinput = TextInputBox(WIN, 25, 10, font_family='Consolas', font_size=25, max_width=650)
 
     while True:
         WIN.fill((0, 0, 0))
@@ -434,14 +422,13 @@ if __name__ == "__main__":
                 exit()
             
             if event.type == pygame.KEYDOWN:
-                ## Changes the alignment of text
-                if event.key == pygame.K_LCTRL:
+                if event.key == pygame.K_RSHIFT:
                     if textinput.align_text == "left":
                         textinput.align_text = "center"
                     else:
                         textinput.align_text = "left"
 
-        ## Here update method will do the rendering and bliting too
+        ## Here update will do the rendering and bliting too
         ## Because we render directly on the main screen for increased performance
         textinput.update(events)
 
