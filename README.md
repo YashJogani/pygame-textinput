@@ -32,6 +32,6 @@ Its very simple to use this module. Create an object of the Class and then feed 
 |       :---:         |           :---:          |
 | Because it renders directly on main surface, there is no need to create transparent surface, so no performance drop with increased number of lines | You have to render multiple times if you want to blit it somewhere else. Because there is no `get_surface()` |
 
-Overall Lite version is better than Standard as most often you don't render same text twice in one frame.
+Overall Lite version is better than Standard as most of the time you don't render same text twice in one frame.
 
 Some part of code is borrowed from [Pygame Text Input](https://github.com/Nearoo/pygame-text-input) under the MIT license.
