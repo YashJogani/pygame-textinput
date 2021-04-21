@@ -1,5 +1,5 @@
 """
-Copyright 2021, J4ck7511, All Rights Reserved.
+Copyright 2021, Jack7511, All Rights Reserved.
 
 Borrowed from https://github.com/Jack7511/pygame-textbox-input under the MIT License.
 
