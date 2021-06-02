@@ -8,6 +8,7 @@ Some part of code is Borrowed from https://github.com/Nearoo/pygame-text-input u
 
 import os.path
 
+from math import ceil
 import pygame
 import pygame.locals as pl
 
@@ -28,11 +29,12 @@ class TextInputBox:
             font_family="",
             font_size=35,
             align_text="left",
-            max_width=-1,
-            max_height=-1,
+            max_width=650,
+            max_height=450,
             antialias=True,
             text_color=(255, 255, 255),
             cursor_color=(255, 255, 255),
+            scroll_bar_color = (100, 100, 100),
             repeat_keys_initial_ms=400,
             repeat_keys_interval_ms=35,
             max_string_length=-1,
@@ -44,11 +46,12 @@ class TextInputBox:
         :param font_family: name or list of names for font (see pygame.font.match_font for precise format)
         :param font_size:  Size of font in pixels
         :param align_text: It aligns all lines by "left" or "center"
-        :param max_width: Width of text box, -1 for infinite width
-        :param max_height: Height of text box, -1 for infinite height
+        :param max_width: Width of text box
+        :param max_height: Height of text box
         :param antialias: Determines if antialias is applied to font (uses more processing power)
         :param text_color: Color of text (duh)
         :param cursor_color: Color of cursor
+        :param scroll_bar_color: Color of scroll bar
         :param repeat_keys_initial_ms: Time in ms before keys are repeated when held
         :param repeat_keys_interval_ms: Interval between key press repetition when held
         :param max_string_length: Allowed length of text
@@ -63,16 +66,13 @@ class TextInputBox:
         self.align_text = align_text
         self.max_width = max_width
         self.max_height = max_height
+        self.scroll_bar_color = scroll_bar_color
         self.max_string_length = max_string_length
         self.password = password
         self.input_string = initial_string  # Inputted text
         self.wrapped_lines = []
         self.text_surface = [] # Stores rendered lines of wrapped_lines
         self.content = [0, 0] # Refer function visible_content
-        if self.max_width != -1 and self.max_height != -1:  # For Scrolling
-            self.text_rect = pygame.Rect(self.x, self.y, self.max_width, self.max_height)
-        else:
-            self.text_rect = None
         
         if not os.path.isfile(font_family):
             font_family = pygame.font.match_font(font_family)
@@ -93,172 +93,256 @@ class TextInputBox:
         self.cursor_ms_counter = 0
         self.cursor_x_pos = 0 # Position of cursor at x index of wrapped_lines
         self.cursor_y_pos = 0 # Position of cursor at y index of wrapped_lines
+
+        if self.max_width < self.font_size or self.max_height < self.font_size:
+            raise ValueError("Width or Height too small")
         
+        # For scrolling
+        h = self.font_object.size('a')[1]
+        self.text_rect = pygame.Rect(self.x, self.y, self.max_width, self.max_height)
+        self.total_lines_possible = self.max_height // h
+        self.scroll_bar = pygame.Rect(self.x + self.max_width, self.y, 7, 0)
+        self.scroll_bar_selected = False
+
         self.clock = pygame.time.Clock()
 
     def update(self, events, active=True):
-        if active:
-            for event in events:
-                if event.type == pygame.KEYDOWN:
-                    self.cursor_visible = True  # So the user sees where he writes
+        for event in events:
+            if event.type == pygame.KEYDOWN and active:
+                self.cursor_visible = True  # So the user sees where he writes
 
-                    # If none exist, create counter for that key:
-                    if event.key not in self.keyrepeat_counters:
-                        if not event.key == pl.K_RETURN: # Filters out return key, others can be added as necessary
-                            self.keyrepeat_counters[event.key] = [0, event.unicode]
-                    
-                    if event.key == pl.K_BACKSPACE:
-                        self.input_string = (
-                            self.input_string[:max(self.cursor_position - 1, 0)]
-                            + self.input_string[self.cursor_position:]
-                        )
-
-                        # Subtract one from cursor_pos, but do not go below zero:
-                        self.cursor_position = max(self.cursor_position - 1, 0)
-
-                    elif event.key == pl.K_DELETE:
-                        self.input_string = (
-                            self.input_string[:self.cursor_position]
-                            + self.input_string[self.cursor_position + 1:]
-                        )
-
-                    elif event.key == pl.K_RETURN:
-                        if self.password:
-                            return True
-                        self.input_string = self.input_string[:self.cursor_position] + '\n' + self.input_string[self.cursor_position:]
-                        self.cursor_position += 1
-                    
-                    elif event.key == pl.K_TAB:
-                        if self.max_string_length == -1 or len(self.input_string) + 4 <= self.max_string_length:
-                            self.input_string = (
-                                self.input_string[:self.cursor_position]
-                                + "    "
-                                + self.input_string[self.cursor_position:]
-                            )
-                            self.cursor_position += 4
-                    
-                    elif event.key == pl.K_RIGHT:
-                        # Add one to cursor_pos, but do not exceed len(input_string)
-                        self.cursor_position = min(self.cursor_position + 1, len(self.input_string))
-                    
-                    elif event.key == pl.K_LEFT:
-                        # Subtract one from cursor_pos, but do not go below zero:
-                        self.cursor_position = max(self.cursor_position - 1, 0)
-
-                    elif event.key == pl.K_HOME:
-                        # Go to Start of line
-                        if len(self.input_string) and self.max_width > 0:
-                            self.cursor_position -= len(self.wrapped_lines[self.cursor_y_pos][:self.cursor_x_pos])
-                            self.cursor_x_pos = 0
-                        else:
-                            self.cursor_position = 0
-                        break
-
-                    elif event.key == pl.K_END:
-                        # Go to End of line
-                        if len(self.input_string) and self.max_width > 0:
-                            self.cursor_position += len(self.wrapped_lines[self.cursor_y_pos][self.cursor_x_pos:])
-                            self.cursor_x_pos = len(self.wrapped_lines[self.cursor_y_pos])
-                        else:
-                            self.cursor_position = len(self.input_string)
-                        break
-
-                    elif event.key == pl.K_PAGEUP:
-                        # Go to Start of first line
-                        self.cursor_position = 0
-                    
-                    elif event.key == pl.K_PAGEDOWN:
-                        # Go to End of last line
-                        self.cursor_position = len(self.input_string)
-                    
-                    elif event.key == pl.K_UP:
-                        # Subtract one from cursor_y_pos, but do not go below zero
-                        if self.cursor_y_pos:
-                            self.cursor_y_pos -= 1
-                            self.cursor_position -= self.cursor_x_pos
-
-                            ## Checking if there is '\n' or space at the end of upper line
-                            if self.input_string[self.cursor_position - 1] == '\n' or self.input_string[self.cursor_position - 1] == ' ':
-                                self.cursor_position -= 1
-                            
-                            self.cursor_x_pos = len(self.wrapped_lines[self.cursor_y_pos][:self.cursor_x_pos])
-                            self.cursor_position -= len(self.wrapped_lines[self.cursor_y_pos][self.cursor_x_pos:])
-                        
-                        self.visible_content()
-                        break
-                    
-                    elif event.key == pl.K_DOWN:
-                        # Add one to cursor_y_pos, but do not exceed len(wrapped_lines) - 1
-                        if self.cursor_y_pos < len(self.wrapped_lines) - 1:
-                            self.cursor_y_pos += 1
-                            self.cursor_position += len(self.wrapped_lines[self.cursor_y_pos - 1][self.cursor_x_pos:])
-
-                            ## Checking if there is '\n' or space at the end of current line
-                            if self.input_string[self.cursor_position] == '\n' or self.input_string[self.cursor_position] == ' ':
-                                self.cursor_position += 1
-                            
-                            self.cursor_x_pos = len(self.wrapped_lines[self.cursor_y_pos][:self.cursor_x_pos])
-                            self.cursor_position += self.cursor_x_pos
-                        
-                        self.visible_content()
-                        break
-                    
-                    elif self.max_string_length == -1 or len(self.input_string) < self.max_string_length:
-                        # If no special key is pressed, add unicode of key to input_string
-                        self.input_string = (
-                            self.input_string[:self.cursor_position]
-                            + event.unicode
-                            + self.input_string[self.cursor_position:]
-                        )
-                        self.cursor_position += len(event.unicode)  # Some are empty, e.g. K_UP
-
-                    string = self.input_string
-                    if self.password:
-                        string = "*" * len(self.input_string)
-                    
-                    # Wraps the text and store lines in wrapped_lines
-                    # Then render it and store it in text_surface
-                    # So we dont have to render every frame unless any key is pressed
-                    self.wrap_text(string)
-
-                elif event.type == pl.KEYUP:
-                    # *** Because KEYUP doesn't include event.unicode, this dict is stored in such a weird way
-                    if event.key in self.keyrepeat_counters:
-                        del self.keyrepeat_counters[event.key]
+                # If none exist, create counter for that key:
+                if event.key not in self.keyrepeat_counters:
+                    self.keyrepeat_counters[event.key] = [0, event.unicode]
                 
-                if event.type == pl.MOUSEBUTTONDOWN:
-                    if self.text_rect and self.text_rect.collidepoint(event.pos):
-                        h = self.font_object.size('a')[1]
-                        total_lines_possible = self.max_height // h
-
-                        if event.button == 4:
-                            # Scroll Up
-                            self.content[0] = max(0, self.content[0] - 1)
-                            self.content[1] = len(self.wrapped_lines[:self.content[0] + total_lines_possible])
-
-                            if total_lines_possible > len(self.wrapped_lines):
-                                self.content[1] -= 1
-                        
-                        elif event.button == 5:
-                            # Scroll Down
-                            if len(self.wrapped_lines) >= total_lines_possible and not self.content[1] == len(self.wrapped_lines) - 1:
-                                self.content[0] += 1
-                            
-                            self.content[1] = min(len(self.wrapped_lines) - 1, self.content[1] + 1)
-                        
-            # Update key counters:
-            for key in self.keyrepeat_counters:
-                self.keyrepeat_counters[key][0] += self.clock.get_time()  # Update clock
-
-                # Generate new key events if enough time has passed:
-                if self.keyrepeat_counters[key][0] >= self.keyrepeat_intial_interval_ms:
-                    self.keyrepeat_counters[key][0] = (
-                        self.keyrepeat_intial_interval_ms
-                        - self.keyrepeat_interval_ms
+                if event.key == pl.K_BACKSPACE:
+                    self.input_string = (
+                        self.input_string[:max(self.cursor_position - 1, 0)]
+                        + self.input_string[self.cursor_position:]
                     )
 
-                    event_key, event_unicode = key, self.keyrepeat_counters[key][1]
-                    pygame.event.post(pygame.event.Event(pl.KEYDOWN, key=event_key, unicode=event_unicode))
+                    # Subtract one from cursor_pos, but do not go below zero:
+                    self.cursor_position = max(self.cursor_position - 1, 0)
+
+                elif event.key == pl.K_DELETE:
+                    self.input_string = (
+                        self.input_string[:self.cursor_position]
+                        + self.input_string[self.cursor_position + 1:]
+                    )
+
+                elif event.key == pl.K_RETURN:
+                    if self.password:
+                        return True
+                    self.input_string = self.input_string[:self.cursor_position] + '\n' + self.input_string[self.cursor_position:]
+                    self.cursor_position += 1
+                
+                elif event.key == pl.K_TAB:
+                    if self.max_string_length == -1 or len(self.input_string) + 4 <= self.max_string_length:
+                        self.input_string = (
+                            self.input_string[:self.cursor_position]
+                            + "    "
+                            + self.input_string[self.cursor_position:]
+                        )
+                        self.cursor_position += 4
+                
+                elif event.key == pl.K_RIGHT:
+                    # Add one to cursor_pos, but do not exceed len(input_string)
+                    self.cursor_position = min(self.cursor_position + 1, len(self.input_string))
+                
+                elif event.key == pl.K_LEFT:
+                    # Subtract one from cursor_pos, but do not go below zero:
+                    self.cursor_position = max(self.cursor_position - 1, 0)
+
+                elif event.key == pl.K_HOME:
+                    # Go to start of line
+                    if len(self.input_string):
+                        self.cursor_position -= len(self.wrapped_lines[self.cursor_y_pos][:self.cursor_x_pos])
+                        self.cursor_x_pos = 0
+                    else:
+                        self.cursor_position = 0
+                    break
+
+                elif event.key == pl.K_END:
+                    # Go to end of line
+                    if len(self.input_string):
+                        self.cursor_position += len(self.wrapped_lines[self.cursor_y_pos][self.cursor_x_pos:])
+                        self.cursor_x_pos = len(self.wrapped_lines[self.cursor_y_pos])
+                    else:
+                        self.cursor_position = len(self.input_string)
+                    break
+
+                elif event.key == pl.K_PAGEUP:
+                    self.cursor_position = 0
+                
+                elif event.key == pl.K_PAGEDOWN:
+                    self.cursor_position = len(self.input_string)
+                
+                elif event.key == pl.K_UP:
+                    # Subtract one from cursor_y_pos, but do not go below zero
+                    if self.cursor_y_pos:
+                        self.cursor_y_pos -= 1
+                        self.cursor_position -= self.cursor_x_pos
+
+                        ## Checking if there is '\n' or space at the end of upper line
+                        if self.input_string[self.cursor_position - 1] == '\n' or self.input_string[self.cursor_position - 1] == ' ':
+                            self.cursor_position -= 1
+                        
+                        self.cursor_x_pos = len(self.wrapped_lines[self.cursor_y_pos][:self.cursor_x_pos])
+                        self.cursor_position -= len(self.wrapped_lines[self.cursor_y_pos][self.cursor_x_pos:])
+                    
+                    if len(self.wrapped_lines):
+                        self.visible_content()
+                        self.text_surface = []
+                        ## Render lines and store it
+                        for i in range(self.content[0], self.content[1] + 1):
+                            self.text_surface.append(self.font_object.render(self.wrapped_lines[i], self.antialias, self.text_color))
+                    break
+                
+                elif event.key == pl.K_DOWN:
+                    # Add one to cursor_y_pos, but do not exceed len(wrapped_lines) - 1
+                    if self.cursor_y_pos < len(self.wrapped_lines) - 1:
+                        self.cursor_y_pos += 1
+                        self.cursor_position += len(self.wrapped_lines[self.cursor_y_pos - 1][self.cursor_x_pos:])
+
+                        ## Checking if there is '\n' or space at the end of current line
+                        if self.input_string[self.cursor_position] == '\n' or self.input_string[self.cursor_position] == ' ':
+                            self.cursor_position += 1
+                        
+                        self.cursor_x_pos = len(self.wrapped_lines[self.cursor_y_pos][:self.cursor_x_pos])
+                        self.cursor_position += self.cursor_x_pos
+                    
+                    if len(self.wrapped_lines):
+                        self.visible_content()
+                        self.text_surface = []
+                        ## Render lines and store it
+                        for i in range(self.content[0], self.content[1] + 1):
+                            self.text_surface.append(self.font_object.render(self.wrapped_lines[i], self.antialias, self.text_color))
+                    break
+                
+                elif self.max_string_length == -1 or len(self.input_string) < self.max_string_length:
+                    # If no special key is pressed, add unicode of key to input_string
+                    self.input_string = (
+                        self.input_string[:self.cursor_position]
+                        + event.unicode
+                        + self.input_string[self.cursor_position:]
+                    )
+                    self.cursor_position += len(event.unicode)  # Some are empty, e.g. K_UP
+
+                string = self.input_string
+                if self.password:
+                    string = "*" * len(self.input_string)
+                
+                # Wraps the text and store lines in wrapped_lines
+                # Then render it and store it in text_surface
+                # So we dont have to render every frame unless any key is pressed
+                self.wrap_text(string)
+
+            elif event.type == pl.KEYUP:
+                # *** Because KEYUP doesn't include event.unicode, this dict is stored in such a weird way
+                if event.key in self.keyrepeat_counters:
+                    del self.keyrepeat_counters[event.key]
+            
+            if event.type == pl.MOUSEBUTTONDOWN:
+                if self.scroll_bar.collidepoint(event.pos):
+                    # Scroll bar Selected
+                    self.scroll_bar_selected = True
+                    self.scroll_bar_selected_y = event.pos[1] - self.scroll_bar.y
+                
+                if self.text_rect.collidepoint(event.pos):
+                    if event.button == 4:
+                        # Scroll Up
+                        self.content[0] = max(0, self.content[0] - 1)
+                        self.content[1] = len(self.wrapped_lines[:self.content[0] + self.total_lines_possible]) - 1
+                    
+                    elif event.button == 5:
+                        # Scroll Down
+                        if len(self.wrapped_lines) >= self.total_lines_possible and not self.content[1] == len(self.wrapped_lines) - 1:
+                            self.content[0] += 1
+                        
+                        self.content[1] = len(self.wrapped_lines[:self.content[0] + self.total_lines_possible]) - 1
+                    
+                    elif event.button == 1:
+                        if len(self.wrapped_lines) and (self.cursor_y_pos < self.content[0] or self.cursor_y_pos > self.content[1]):
+                            self.cursor_position = 0
+                            self.cursor_x_pos = 0
+                            self.cursor_y_pos = self.content[0]
+
+                            for i in range(self.cursor_y_pos):
+                                self.cursor_position += len(self.wrapped_lines[i])
+                                if self.input_string[self.cursor_position] == '\n' or self.input_string[self.cursor_position] == ' ':
+                                    self.cursor_position += 1
+                                
+                    self.text_surface = []
+                    ## Render lines and store it
+                    if len(self.wrapped_lines):
+                        for i in range(self.content[0], self.content[1] + 1):
+                            self.text_surface.append(self.font_object.render(self.wrapped_lines[i], self.antialias, self.text_color))
+                    
+                    # Changes the position of scroll bar
+                    if len(self.wrapped_lines) > self.total_lines_possible:
+                        if self.scroll_bar.h > 10:
+                            self.scroll_bar.y = self.y + self.content[0]
+                            self.scroll_bar.h = self.max_height - (len(self.wrapped_lines) - self.total_lines_possible)
+                        else:
+                            y = self.content[0] // self.n
+
+                            while True:
+                                temp = y * self.n
+                                for i in self.remaining_n:
+                                    temp += y // i
+                                if temp <= self.content[0]:
+                                    break
+                                y -= 1
+                            
+                            self.scroll_bar.y = self.y + y
+                    else:
+                        self.scroll_bar.h = 0
+            
+            if self.scroll_bar_selected:
+                # Scrolls content on moving cursor
+                if pygame.mouse.get_pressed()[0]:
+                    y = pygame.mouse.get_pos()[1] - self.scroll_bar_selected_y
+                    self.scroll_bar.y = y
+
+                    if y < self.y:
+                        self.scroll_bar.y = self.y
+                    
+                    elif self.scroll_bar.bottom > self.max_height + self.y:
+                        self.scroll_bar.bottom = self.max_height + self.y
+                    
+                    if self.scroll_bar.h > 10:
+                        self.content[0] = self.scroll_bar.y - self.y
+                    
+                    else:
+                        y = (self.scroll_bar.y - self.y)
+                        self.content[0] = y * self.n
+
+                        for i in self.remaining_n:
+                            self.content[0] += y // i
+                    
+                    self.content[1] = len(self.wrapped_lines[:self.content[0] + self.total_lines_possible]) - 1
+                    
+                    self.text_surface = []
+                    ## Render lines and store it
+                    for i in range(self.content[0], self.content[1] + 1):
+                        self.text_surface.append(self.font_object.render(self.wrapped_lines[i], self.antialias, self.text_color))
+                    
+                else:
+                    self.scroll_bar_selected = False
+            
+        # Update key counters:
+        for key in self.keyrepeat_counters:
+            self.keyrepeat_counters[key][0] += self.clock.get_time()  # Update clock
+
+            # Generate new key events if enough time has passed:
+            if self.keyrepeat_counters[key][0] >= self.keyrepeat_intial_interval_ms:
+                self.keyrepeat_counters[key][0] = (
+                    self.keyrepeat_intial_interval_ms
+                    - self.keyrepeat_interval_ms
+                )
+
+                event_key, event_unicode = key, self.keyrepeat_counters[key][1]
+                pygame.event.post(pygame.event.Event(pl.KEYDOWN, key=event_key, unicode=event_unicode))
                 
         if active:
             # Update self.cursor_visible
@@ -285,28 +369,7 @@ class TextInputBox:
         
         cursor_x_temp = 0
         cursor_y_temp = 0
-
-        ## For infinite width
-        if self.max_width == -1:
-            self.wrapped_lines = string.splitlines()
-            if self.input_string[-1] == '\n':
-                self.wrapped_lines.append('')
         
-            ## Calculate the cursor x and y position
-            for line in self.wrapped_lines:
-                if (cursor_x_temp + len(line) + 1) <= self.cursor_position:
-                    cursor_x_temp += len(line) + 1
-                    cursor_y_temp += 1
-                    continue
-                
-                self.cursor_x_pos = self.cursor_position - cursor_x_temp
-                self.cursor_y_pos = cursor_y_temp
-                break
-
-            self.visible_content()
-            return None
-        
-
         ## Splits the string by words and line
         text = [line.split(' ') for line in string.splitlines()]
         
@@ -371,11 +434,11 @@ class TextInputBox:
         self.visible_content()
         self.text_surface = []
 
-        ## Render every line and store it
-        for line in self.wrapped_lines:
-            self.text_surface.append(self.font_object.render(line, self.antialias, self.text_color))
-
-
+        ## Render lines and store it
+        for i in range(self.content[0], self.content[1] + 1):
+            self.text_surface.append(self.font_object.render(self.wrapped_lines[i], self.antialias, self.text_color))
+        
+        
     def wrap_word(self, word):
         wrapped_word = []
 
@@ -383,7 +446,7 @@ class TextInputBox:
             ## Store as many characters as possible to fit in allowed width
             line_of_char = []
             while len(word):
-
+                
                 line_of_char.append(word[:1])
                 word = word[1:]
                 fw, fh = self.font_object.size(''.join(line_of_char + [word[:1]]))
@@ -404,25 +467,18 @@ class TextInputBox:
         ## Based on cursor y pos
         ## Content list contains
         ## Starting index and Ending index of wrapped lines to render
-
-        if self.max_height == -1:
-            ## Render all lines
-            self.content[0] = 0
-            self.content[1] = len(self.wrapped_lines) - 1
-            return None
         
         h = self.font_object.size('a')[1]
         total_h = h * len(self.wrapped_lines)
-        total_lines_possible = self.max_height // h
         
         if total_h > self.max_height:
             if self.cursor_y_pos < self.content[0]:
                 self.content[0] = self.cursor_y_pos
-                self.content[1] = len(self.wrapped_lines[:self.content[0] + total_lines_possible])
+                self.content[1] = len(self.wrapped_lines[:self.content[0] + self.total_lines_possible]) - 1
             
             elif self.cursor_y_pos > self.content[1]:
                 self.content[1] = self.cursor_y_pos
-                self.content[0] = len(self.wrapped_lines[:self.content[1] - total_lines_possible])
+                self.content[0] = len(self.wrapped_lines[:self.content[1] - self.total_lines_possible]) + 1
             
             if self.content[1] >= len(self.wrapped_lines):
                 self.content[0] = max(0, self.content[0] - 1)
@@ -430,8 +486,48 @@ class TextInputBox:
             
         else:
             self.content[0] = 0
-            self.content[1] = len(self.wrapped_lines[:total_lines_possible]) - 1
+            self.content[1] = len(self.wrapped_lines[:self.total_lines_possible]) - 1
         
+        if len(self.wrapped_lines) > self.total_lines_possible:
+            height = self.max_height - (len(self.wrapped_lines) - self.total_lines_possible)
+            
+            if height > 10:
+                self.scroll_bar.y = self.y + self.content[0]
+                self.scroll_bar.h = height
+            else:
+                self.scroll_bar.h = 10
+
+                length = len(self.wrapped_lines) - self.total_lines_possible
+                loops = self.max_height - self.scroll_bar.h
+
+                self.n = length // loops
+
+                n1 = length - self.n*loops
+                left = n1
+                self.remaining_n = []
+
+                while left:
+                    n1 = ceil(loops/n1)
+                    self.remaining_n.append(n1)
+                    left -= loops//n1
+                    n1 = left
+                
+                y = self.content[0] // self.n
+
+                while True:
+                    temp = y * self.n
+                    for i in self.remaining_n:
+                        temp += y // i
+                    if temp <= self.content[0]:
+                        break
+                    y -= 1
+                
+                self.scroll_bar.y = self.y + y
+                
+        else:
+            self.scroll_bar.h = 0
+        
+
     def render(self, screen):
         if not len(self.input_string):
             cursor_x_pos, cursor_y_pos = (self.x, self.y) if self.align_text == "left" else (self.x + self.max_width/2, self.y)
@@ -440,15 +536,13 @@ class TextInputBox:
                 screen.blit(self.cursor_surface, (cursor_x_pos, cursor_y_pos))
             return None
         
-        if self.max_width == -1:
-            self.align_text = "left"
-        
         y_offset = 0
         cursor_y_temp = self.content[0]
+        i = self.content[0]
 
         ## Now Render each line individually
-        for line in range(self.content[0], self.content[1] + 1):
-            fw, fh = self.text_surface[line].get_size()
+        for line in self.text_surface:
+            fw, fh = line.get_size()
 
             if self.align_text == "left":
                 x = self.x + 0
@@ -458,18 +552,20 @@ class TextInputBox:
             y = self.y + y_offset
             
             if cursor_y_temp == self.cursor_y_pos:
-                cursor_x_pos = self.font_object.size(self.wrapped_lines[line][:self.cursor_x_pos])[0] + x
+                cursor_x_pos = self.font_object.size(self.wrapped_lines[i][:self.cursor_x_pos])[0] + x
                 cursor_y_pos = y_offset + self.y
             
-            screen.blit(self.text_surface[line], (x, y))
+            screen.blit(line, (x, y))
             
             y_offset += fh
             cursor_y_temp += 1
-
+            i += 1
+        
         if self.cursor_y_pos >= self.content[0] and self.cursor_y_pos <= self.content[1] and self.cursor_visible:
             screen.blit(self.cursor_surface, (cursor_x_pos, cursor_y_pos))
-
-
+        
+        pygame.draw.rect(screen, self.scroll_bar_color, self.scroll_bar)
+        
     def get_surface(self):
         return self.text_surface
     
@@ -489,14 +585,43 @@ class TextInputBox:
         
         self.wrap_text(string)
         
+        self.content[0] = 0
+        self.content[1] = len(self.wrapped_lines[:self.total_lines_possible]) - 1
+
+        self.text_surface = []
+        ## Render lines and store it
+        for i in range(self.content[0], self.content[1] + 1):
+            self.text_surface.append(self.font_object.render(self.wrapped_lines[i], self.antialias, self.text_color))
+
+    def set_dimension(self, x, y, max_width, max_height):
+        if self.max_width < self.font_size or self.max_height < self.font_size:
+            raise ValueError("Width or Height too small")
+        
+        self.x = x
+        self.y = y
+        self.max_width = max_width
+        self.max_height = max_height
+
         h = self.font_object.size('a')[1]
-        total_lines_possible = self.max_height // h
-        self.content[0] = self.cursor_y_pos
-        self.content[1] = len(self.wrapped_lines[:self.content[0] + total_lines_possible])
+        self.text_rect = pygame.Rect(self.x, self.y, self.max_width, self.max_height)
+        self.total_lines_possible = self.max_height // h
+        self.scroll_bar = pygame.Rect(self.x + self.max_width, self.y, 7, 0)
+        self.scroll_bar_selected = False
+
+        string = self.input_string
+        if self.password:
+            string = "*" * len(self.input_string)
         
-        if total_lines_possible > len(self.wrapped_lines):
-            self.content[1] -= 1
+        self.wrap_text(string)
         
+        self.content[0] = 0
+        self.content[1] = len(self.wrapped_lines[:self.total_lines_possible]) - 1
+
+        self.text_surface = []
+        ## Render lines and store it
+        for i in range(self.content[0], self.content[1] + 1):
+            self.text_surface.append(self.font_object.render(self.wrapped_lines[i], self.antialias, self.text_color))
+    
     def set_text_color(self, color):
         self.text_color = color
 
@@ -508,7 +633,7 @@ class TextInputBox:
         self.cursor_position = 0
         self.wrapped_lines = []
         self.content = [0, 0]
-
+        self.text_surface = []
 
 if __name__ == "__main__":
     pygame.init()
@@ -517,8 +642,8 @@ if __name__ == "__main__":
     clock = pygame.time.Clock()
 
     # Create TextInput-object
-    textinput = TextInputBox(25, 15, font_family='Arial', font_size=30, max_width=650, max_height=450)
-    
+    textinput = TextInputBox(25, 15, font_family='Arial', font_size=25, max_width=650, max_height=450)
+
     font = pygame.font.Font(pygame.font.match_font('Arial'), 14)
     
     while True:
@@ -531,7 +656,7 @@ if __name__ == "__main__":
         
         ## Feed it with events
         textinput.update(events)
-
+        
         ## Render the font
         textinput.render(WIN)
 
@@ -539,7 +664,7 @@ if __name__ == "__main__":
         pygame.draw.rect(WIN, (0, 118, 197), (0, 480, 700, 20))
 
         cursor_pos = font.render(f"Ln {textinput.cursor_y_pos + 1}, Col {textinput.cursor_x_pos + 1}", True, (255, 255, 255))
-        WIN.blit(cursor_pos, (700 - cursor_pos.get_width() - 15, 500 - 10 - cursor_pos.get_height()//2))
+        WIN.blit(cursor_pos, (700 - cursor_pos.get_width() - 15, 482))
         
         pygame.display.update()
         clock.tick(60)
