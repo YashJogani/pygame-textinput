@@ -7,13 +7,15 @@ Some part of code is Borrowed from https://github.com/Nearoo/pygame-text-input u
 """
 
 import os.path
-
 from math import ceil
 import pygame
 import pygame.locals as pl
+import re
 
+pygame.init()
 pygame.font.init()
-
+pygame.scrap.init()
+pygame.scrap.set_mode(pygame.SCRAP_CLIPBOARD)
 
 class TextInputBox:
     """
@@ -176,7 +178,20 @@ class TextInputBox:
                 
                 elif event.key == pl.K_PAGEDOWN:
                     self.cursor_position = len(self.input_string)
-                
+                                
+                elif event.key == pygame.K_v and pygame.key.get_mods() & pygame.KMOD_CTRL:
+                    # Copy the text from clipboard
+                    pasted_text = pygame.scrap.get("text/plain;charset=utf-8").decode()
+                    pasted_text = re.sub(r'\r', '', pasted_text)
+
+                    if self.max_string_length == -1 or len(self.input_string) + len(pasted_text) <= self.max_string_length:
+                        self.input_string = (
+                            self.input_string[:self.cursor_position]
+                            + pasted_text
+                            + self.input_string[self.cursor_position:]
+                        )
+                        self.cursor_position = self.cursor_position + len(pasted_text)
+            
                 elif event.key == pl.K_UP:
                     # Subtract one from cursor_y_pos, but do not go below zero
                     if self.cursor_y_pos:
