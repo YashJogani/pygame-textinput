@@ -3,7 +3,7 @@
 ### Features
 
 - Text wraps into the next line if words don't fit in desired `max_width`.
-- Scrolling, Enter, Home, End and Delete works.
+- Scrolling, Pasting text, Enter, Home, End and Delete works.
 - You can navigate cursor through multiple lines with the help of arrow keys.
 - Text lines can be aligned by `left` or `center`.
 - It works just like you expect.
