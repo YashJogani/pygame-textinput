@@ -7,10 +7,10 @@ Some part of code is Borrowed from https://github.com/Nearoo/pygame-text-input u
 """
 
 import os.path
+
 from math import ceil
 import pygame
 import pygame.locals as pl
-import re
 
 pygame.init()
 pygame.font.init()
@@ -178,11 +178,11 @@ class TextInputBox:
                 
                 elif event.key == pl.K_PAGEDOWN:
                     self.cursor_position = len(self.input_string)
-                                
+                
                 elif event.key == pygame.K_v and pygame.key.get_mods() & pygame.KMOD_CTRL:
                     # Copy the text from clipboard
                     pasted_text = pygame.scrap.get("text/plain;charset=utf-8").decode()
-                    pasted_text = re.sub(r'\r', '', pasted_text)
+                    pasted_text = pasted_text.replace('\r', '')
 
                     if self.max_string_length == -1 or len(self.input_string) + len(pasted_text) <= self.max_string_length:
                         self.input_string = (
@@ -277,16 +277,39 @@ class TextInputBox:
                         self.content[1] = len(self.wrapped_lines[:self.content[0] + self.total_lines_possible]) - 1
                     
                     elif event.button == 1:
-                        if len(self.wrapped_lines) and (self.cursor_y_pos < self.content[0] or self.cursor_y_pos > self.content[1]):
-                            self.cursor_position = 0
-                            self.cursor_x_pos = 0
-                            self.cursor_y_pos = self.content[0]
+                        # Put Cursor at the cursor pos
+                        self.cursor_position = 0
+                        self.cursor_x_pos = 0
+                        self.cursor_y_pos = self.content[0]
 
-                            for i in range(self.cursor_y_pos):
-                                self.cursor_position += len(self.wrapped_lines[i])
-                                if self.input_string[self.cursor_position] == '\n' or self.input_string[self.cursor_position] == ' ':
+                        for i in range(self.cursor_y_pos):
+                            self.cursor_position += len(self.wrapped_lines[i])
+                            if self.input_string[self.cursor_position] == '\n' or self.input_string[self.cursor_position] == ' ':
+                                self.cursor_position += 1
+                        
+                        pos = event.pos
+                        x = pos[0] - self.x
+                        y = pos[1] - self.y
+                        line = min(len(self.wrapped_lines) - 1, y // self.font_object.size('a')[1])
+                        characters_size = 0
+
+                        for i in range(line):
+                            self.cursor_y_pos += 1
+                            self.cursor_position += len(self.wrapped_lines[self.content[0] + i])
+                            if self.input_string[self.cursor_position] == '\n' or self.input_string[self.cursor_position] == ' ':
+                                self.cursor_position += 1
+                        
+                        if len(self.wrapped_lines):
+                            for i in self.wrapped_lines[self.cursor_y_pos]:
+                                character_width = self.font_object.size(i)[0]
+                                characters_size += character_width
+
+                                if characters_size < x:
+                                    self.cursor_x_pos += 1
                                     self.cursor_position += 1
-                                
+                                else:
+                                    break
+                        
                     self.text_surface = []
                     ## Render lines and store it
                     if len(self.wrapped_lines):
